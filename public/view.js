@@ -107,7 +107,7 @@ export function renderResult(r) {
   const box = $('result');
   if (!r) { box.hidden = true; box.innerHTML = ''; return; }
   const f = r.finding;
-  const headline = f.action === 'already_reversed' ? 'Failed at the switch, already refunded' : (HEADLINE[f.stopped_at] || HEADLINE.unknown);
+  const headline = f.needs_account ? 'Account number needed' : f.action === 'already_reversed' ? 'Failed at the switch, already refunded' : (HEADLINE[f.stopped_at] || HEADLINE.unknown);
   const fact = (label, value, cls = '') => value ? `<div><dt>${label}</dt><dd class="${cls}">${esc(value)}</dd></div>` : '';
   box.hidden = false;
   box.innerHTML = `<span class="tag">Finding · ${esc(r.mode)}</span>

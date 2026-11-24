@@ -27,6 +27,13 @@ const unknown = ruleInvestigate({ name: 'X', account: '0199999999', text: 'I sen
 assert.equal(unknown.finding.action, 'escalate');
 console.log('ok  unknown account escalates');
 
+const noAcct = ruleInvestigate({ name: 'Walk-in customer', account: '', text: 'I sent 20k to my cousin and he didnt recieve it' });
+assert.equal(noAcct.finding.action, 'escalate');
+assert.equal(noAcct.steps.length, 0, 'no search without an account number');
+const { TOOLS } = await import('../public/engine.js');
+assert.deepEqual(TOOLS.search_sender_ledger({ amount: 25000 }), [], 'ledger search needs an account');
+console.log('ok  no account means no search');
+
 assert.equal(parseFinding('Here you go: {"action":"escalate","diagnosis":"x"}').action, 'escalate');
 assert.throws(() => parseFinding('{"action":"delete_everything"}'));
 console.log('ok  agent answer parsing');

@@ -41,9 +41,10 @@ export const naira = n => '₦' + Number(n).toLocaleString('en-NG');
 
 // ---------- Tools: the agent's view of each system ----------
 export const TOOLS = {
-  search_sender_ledger: ({ account, amount, date } = {}) => SENDER.filter(r =>
+  // An account number is required: Trace never searches across all customers.
+  search_sender_ledger: ({ account, amount, date } = {}) => !/^\d{10}$/.test(String(account ?? '')) ? [] : SENDER.filter(r =>
     r.type === 'DEBIT' &&
-    (!account || r.account === String(account)) &&
+    r.account === String(account) &&
     (!amount || r.amount === Number(amount)) &&
     (!date || r.time.startsWith(String(date)))),
   query_nibss: ({ session_id } = {}) => NIBSS.filter(r => r.session === String(session_id)),
@@ -59,7 +60,7 @@ export function runTool(name, input) {
 
 // Tool definitions in Anthropic Messages API format.
 export const TOOL_DEFS = [
-  { name: 'search_sender_ledger', description: 'Search Kora Bank debits. Filter by account (10 digits), amount (naira, number) and/or date (YYYY-MM-DD). Returns matching debits with their NIBSS session IDs.', input_schema: { type: 'object', properties: { account: { type: 'string' }, amount: { type: 'number' }, date: { type: 'string' } } } },
+  { name: 'search_sender_ledger', description: "Search one customer's Kora Bank debits. account (10 digits) is required; optionally filter by amount (naira, number) and date (YYYY-MM-DD). Returns matching debits with their NIBSS session IDs.", input_schema: { type: 'object', properties: { account: { type: 'string' }, amount: { type: 'number' }, date: { type: 'string' } }, required: ['account'] } },
   { name: 'query_nibss', description: 'Look up a transfer on the NIBSS switch by session ID. code "00" means delivered to the receiving bank; any other code means it failed at the switch.', input_schema: { type: 'object', properties: { session_id: { type: 'string' } }, required: ['session_id'] } },
   { name: 'query_receiving_bank', description: 'Ask the receiving bank whether it credited the beneficiary for a session ID. status POSTED means credited; FAILED or no record means not credited.', input_schema: { type: 'object', properties: { session_id: { type: 'string' } }, required: ['session_id'] } },
   { name: 'check_reversals', description: 'Check whether Kora Bank already reversed a transfer back to the customer, by session ID.', input_schema: { type: 'object', properties: { session_id: { type: 'string' } }, required: ['session_id'] } }
@@ -70,6 +71,7 @@ export const ACTIONS = ['reverse_to_customer', 'request_credit', 'send_proof_of_
 // ---------- AI prompt and answer parsing ----------
 export function buildPrompt(c) {
   return `You are Trace, an AI agent that investigates "debited but not credited" transfer disputes for Kora Bank in Nigeria. Today is ${TODAY}.
+If no account number is known, do not search: answer with action "escalate" and ask the customer for their account number.
 Use the tools to: find the customer's debit (relative dates like "last Monday" are relative to today; 50k means 50000), look up its session on NIBSS, check the receiving bank if NIBSS delivered it, and check for reversals. Work only from tool results; never guess.
 Customer: ${c.name || 'unknown'}. Account on file: ${c.account || 'unknown'}.
 Complaint: """${c.text}"""
@@ -95,7 +97,8 @@ export function parseComplaint(text) {
   return { acct, amt };
 }
 
-export function decide({ d, sw, rc, rv } = {}) {
+export function decide({ d, sw, rc, rv, noAccount } = {}) {
+  if (noAccount) return { found: false, needs_account: true, stopped_at: 'unknown', reversed: false, action: 'escalate', diagnosis: 'The complaint has no account number, so Trace did not search. It never looks through other customers\' records.', customer_message: 'Thank you for reaching out. To trace your transfer, please reply with the 10-digit account number you sent the money from, and the date of the transfer.' };
   if (!d) return { found: false, stopped_at: 'unknown', reversed: false, action: 'escalate', diagnosis: 'No matching debit on this account. A human investigator should confirm the details with the customer.', customer_message: 'Thank you for reaching out. We could not find this transfer on your account yet. An investigator will call you within 24 hours to confirm the details.' };
   const base = { found: true, debit_ref: d.ref, session_id: d.session, amount: d.amount, beneficiary: `${d.beneficiary} (${d.bank})` };
   const amt = naira(d.amount);
@@ -112,6 +115,7 @@ export function ruleInvestigate(c) {
   const call = (name, input) => { const result = runTool(name, input); steps.push({ name, input, result }); return result; };
   const p = parseComplaint(c.text);
   const account = p.acct || c.account;
+  if (!account) return { steps, finding: decide({ noAccount: true }) };
   let debits = call('search_sender_ledger', { account, amount: p.amt });
   if (!debits.length && p.amt) debits = call('search_sender_ledger', { account });
   if (!debits.length) return { steps, finding: decide({}) };
