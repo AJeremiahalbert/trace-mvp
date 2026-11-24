@@ -179,7 +179,7 @@ button, textarea { font: inherit; color: inherit; }
 .steps li.pending .spinner { margin: 3px auto 0; color: var(--accent); }
 .steps li.note .dot { background: var(--border); }
 .steps small { display: block; color: var(--muted); font-size: var(--t-sm); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.steps .empty { color: var(--muted); }
+.steps li.empty { display: block; color: var(--muted); }
 @keyframes enter { from { opacity: 0; transform: translateY(4px) scale(0.98); } }
 
 /* ---------- Result ---------- */
